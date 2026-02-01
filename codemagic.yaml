@@ -12,6 +12,7 @@ workflows:
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
+          # إنشاء ملف بناء المشروع
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -23,6 +24,7 @@ workflows:
           allprojects { repositories { google(); mavenCentral() } }
           EOF
 
+          # إنشاء ملف بناء التطبيق مع تفعيل التوقيع التلقائي
           cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -41,7 +43,7 @@ workflows:
               buildTypes {
                   release {
                       minifyEnabled false
-                      // إضافة التوقيع التلقائي هنا
+                      // هذا السطر يحل مشكلة "الحزمة غير صالحة"
                       signingConfig signingConfigs.debug 
                   }
               }
@@ -58,6 +60,7 @@ workflows:
           }
           EOF
 
+          # إنشاء ملف الثيم
           cat <<EOF > app/src/main/res/values/styles.xml
           <resources>
               <style name="Theme.App" parent="Theme.AppCompat.NoActionBar" />
@@ -70,7 +73,6 @@ workflows:
       - name: Build and Sign APK
         script: |
           export JAVA_HOME=$JAVA_HOME_17
-          # بناء نسخة موقعة بمفتاح التصحيح لكي تعمل على هاتفك
           ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
