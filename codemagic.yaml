@@ -1,41 +1,44 @@
-# تأكد أن هذا الملف في الجذر الرئيسي (Root) لمستودعك
 workflows:
-  android-stealth-workflow: # هذا الاسم يجب أن يتطابق مع إعدادات Codemagic
+  android-stealth-workflow:
     name: Build Stealth APK
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Generate Missing Android Files
+      - name: Generate Core Android Files
         script: |
-          # إنشاء هيكل المجلدات إذا لم تكن موجودة
+          # 1. إنشاء المجلدات
           mkdir -p app/src/main/java/com/android/system/framework
-          mkdir -p app/src/main/res/values
           
-          # إنشاء ملف settings.gradle
+          # 2. إنشاء ملف settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # إنشاء ملف build.gradle (Project Level)
+          # 3. إنشاء ملف build.gradle الرئيسي (إصلاح مشكلة Kotlin Plugin)
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.1.1' }
+              dependencies { 
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+              }
           }
           allprojects {
               repositories { google(); mavenCentral() }
           }
           EOF
 
-          # إنشاء ملف build.gradle الخاص بالمجلد app
+          # 4. إنشاء ملف app/build.gradle (إصلاح مشكلة SDK و Plugins)
           cat <<EOF > app/build.gradle
-          apply plugin: 'com.android.application'
-          apply plugin: 'kotlin-android'
+          plugins {
+              id 'com.android.application'
+              id 'kotlin-android'
+          }
           android {
-              compileSdkVersion 34
               namespace 'com.android.system.framework'
+              compileSdk 34
               defaultConfig {
                   applicationId "com.android.system.framework"
-                  minSdkVersion 24
-                  targetSdkVersion 34
+                  minSdk 24
+                  targetSdk 34
                   versionCode 1
                   versionName "1.0"
               }
@@ -51,8 +54,8 @@ workflows:
           }
           EOF
 
-          # إنشاء ملفات الـ Wrapper لتجنب خطأ No such file
-          gradle wrapper --gradle-version 8.1
+          # 5. توليد محرك Gradle ومنح الصلاحيات (حل مشكلة No such file)
+          gradle wrapper --gradle-version 8.1.1
           chmod +x gradlew
 
       - name: Build APK
