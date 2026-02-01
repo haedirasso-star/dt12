@@ -6,13 +6,17 @@ workflows:
     scripts:
       - name: Generate Core Android Files
         script: |
-          # 1. إنشاء المجلدات
+          # 1. إنشاء المجلدات الأساسية للكود
           mkdir -p app/src/main/java/com/android/system/framework
           
-          # 2. إنشاء ملف settings.gradle
+          # 2. إنشاء ملف settings.gradle لتعريف المشروع
           echo "include ':app'" > settings.gradle
           
-          # 3. إنشاء ملف build.gradle الرئيسي (إصلاح مشكلة Kotlin Plugin)
+          # 3. حل مشكلة AndroidX (هذا هو الإصلاح المطلوب لخطأ checkReleaseAarMetadata)
+          echo "android.useAndroidX=true" > gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+          
+          # 4. إنشاء ملف build.gradle الرئيسي (Project Level)
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -26,7 +30,7 @@ workflows:
           }
           EOF
 
-          # 4. إنشاء ملف app/build.gradle (إصلاح مشكلة SDK و Plugins)
+          # 5. إنشاء ملف app/build.gradle المطور مع تعريف الـ SDK والـ Plugins
           cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -54,12 +58,13 @@ workflows:
           }
           EOF
 
-          # 5. توليد محرك Gradle ومنح الصلاحيات (حل مشكلة No such file)
+          # 6. توليد محرك Gradle ومنح الصلاحيات اللازمة للتشغيل
           gradle wrapper --gradle-version 8.1.1
           chmod +x gradlew
 
       - name: Build APK
         script: |
+          # البدء في تجميع التطبيق بصيغة Release
           ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
