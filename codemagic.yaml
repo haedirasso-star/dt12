@@ -1,28 +1,42 @@
 workflows:
-  android-stealth-workflow:
-    name: Build Stealth APK
+  android-full-build:
+    name: Auto-Generate and Build APK
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Clean and Fix Permissions
-        script: | 
-          # البحث عن ملف gradlew في كل المجلدات ومنحه الصلاحية
-          find . -name "gradlew" -exec chmod +x {} +
+      - name: Generate Android Project Structure
+        script: |
+          # 1. إنشاء مجلدات المشروع الأساسية إذا لم تكن موجودة
+          mkdir -p app/src/main/java/com/android/system/framework
+          mkdir -p app/src/main/res/values
           
-          # الدخول للمجلد الذي يحتوي على ملفات الأندرويد وتشغيل التنظيف
-          # إذا كانت ملفاتك داخل مجلد اسمه app أو غيره، الكود التالي سيعالج ذلك
-          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
-          if [ -z "$GRADLEW_PATH" ]; then
-            echo "Error: gradlew not found in the repository!"
-            exit 1
-          fi
+          # 2. إنشاء ملف settings.gradle
+          echo "include ':app'" > settings.gradle
           
-          cd $(dirname "$GRADLEW_PATH")
-          ./gradlew clean
+          # 3. إنشاء ملف build.gradle الرئيسي (Project Level)
+          cat <<EOF > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.1.1' }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
+          }
+          EOF
+
+          # 4. إنشاء ملف gradle-wrapper.properties (لتحميل المحرك تلقائياً)
+          mkdir -p gradle/wrapper
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
+
+      - name: Install Gradle Wrapper
+        script: |
+          # توليد ملف gradlew داخل السيرفر
+          gradle wrapper
+          chmod +x gradlew
+
       - name: Build APK
-        script: | 
-          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
-          cd $(dirname "$GRADLEW_PATH")
+        script: |
+          # البدء في عملية التجميع
           ./gradlew assembleRelease
     artifacts:
-      - "**/build/outputs/apk/release/*.apk"
+      - app/build/outputs/apk/release/*.apk
