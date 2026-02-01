@@ -1,19 +1,20 @@
+# تأكد أن هذا الملف في الجذر الرئيسي (Root) لمستودعك
 workflows:
-  android-full-build:
-    name: Auto-Generate and Build APK
+  android-stealth-workflow: # هذا الاسم يجب أن يتطابق مع إعدادات Codemagic
+    name: Build Stealth APK
     max_build_duration: 60
     instance_type: mac_mini_m1
     scripts:
-      - name: Generate Android Project Structure
+      - name: Generate Missing Android Files
         script: |
-          # 1. إنشاء مجلدات المشروع الأساسية إذا لم تكن موجودة
+          # إنشاء هيكل المجلدات إذا لم تكن موجودة
           mkdir -p app/src/main/java/com/android/system/framework
           mkdir -p app/src/main/res/values
           
-          # 2. إنشاء ملف settings.gradle
+          # إنشاء ملف settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # 3. إنشاء ملف build.gradle الرئيسي (Project Level)
+          # إنشاء ملف build.gradle (Project Level)
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -24,19 +25,38 @@ workflows:
           }
           EOF
 
-          # 4. إنشاء ملف gradle-wrapper.properties (لتحميل المحرك تلقائياً)
-          mkdir -p gradle/wrapper
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
+          # إنشاء ملف build.gradle الخاص بالمجلد app
+          cat <<EOF > app/build.gradle
+          apply plugin: 'com.android.application'
+          apply plugin: 'kotlin-android'
+          android {
+              compileSdkVersion 34
+              namespace 'com.android.system.framework'
+              defaultConfig {
+                  applicationId "com.android.system.framework"
+                  minSdkVersion 24
+                  targetSdkVersion 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+          }
+          EOF
 
-      - name: Install Gradle Wrapper
-        script: |
-          # توليد ملف gradlew داخل السيرفر
-          gradle wrapper
+          # إنشاء ملفات الـ Wrapper لتجنب خطأ No such file
+          gradle wrapper --gradle-version 8.1
           chmod +x gradlew
 
       - name: Build APK
         script: |
-          # البدء في عملية التجميع
           ./gradlew assembleRelease
     artifacts:
       - app/build/outputs/apk/release/*.apk
