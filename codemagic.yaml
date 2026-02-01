@@ -1,0 +1,15 @@
+workflow:
+  android-stealth-workflow:
+    name: Build Stealth APK
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    scripts:
+      - name: Clean and Fix Permissions
+        script: | 
+          chmod +x gradlew
+          ./gradlew clean
+      - name: Build APK
+        script: | 
+          ./gradlew assembleRelease
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
