@@ -6,17 +6,18 @@ workflows:
     scripts:
       - name: Generate Core Android Files
         script: |
-          # 1. إنشاء المجلدات الأساسية للكود
+          # 1. إنشاء المجلدات الأساسية (بما فيها مجلد الموارد res)
           mkdir -p app/src/main/java/com/android/system/framework
+          mkdir -p app/src/main/res/values
           
-          # 2. إنشاء ملف settings.gradle لتعريف المشروع
+          # 2. إنشاء ملف settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # 3. حل مشكلة AndroidX (هذا هو الإصلاح المطلوب لخطأ checkReleaseAarMetadata)
+          # 3. حل مشكلة AndroidX و Jetifier
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # 4. إنشاء ملف build.gradle الرئيسي (Project Level)
+          # 4. إنشاء ملف build.gradle الرئيسي
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -30,7 +31,7 @@ workflows:
           }
           EOF
 
-          # 5. إنشاء ملف app/build.gradle المطور مع تعريف الـ SDK والـ Plugins
+          # 5. إنشاء ملف app/build.gradle مع إضافة مكتبة AppCompat الضرورية للثيم
           cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -53,18 +54,26 @@ workflows:
               }
           }
           dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
               implementation 'androidx.core:core-ktx:1.12.0'
               implementation 'com.squareup.okhttp3:okhttp:4.12.0'
           }
           EOF
 
-          # 6. توليد محرك Gradle ومنح الصلاحيات اللازمة للتشغيل
+          # 6. إنشاء ملف styles.xml لحل مشكلة (resource style not found)
+          cat <<EOF > app/src/main/res/values/styles.xml
+          <resources>
+              <style name="Theme.App" parent="Theme.AppCompat.NoActionBar" />
+          </resources>
+          EOF
+
+          # 7. توليد محرك Gradle ومنح الصلاحيات
           gradle wrapper --gradle-version 8.1.1
           chmod +x gradlew
 
       - name: Build APK
         script: |
-          # البدء في تجميع التطبيق بصيغة Release
+          # البدء في التجميع النهائي
           ./gradlew assembleRelease
     artifacts:
-      - app/build/outputs/apk/release/*.apk
+      - "app/build/outputs/apk/release/*.apk"
