@@ -6,14 +6,14 @@ workflows:
     scripts:
       - name: Generate Core Android Files
         script: |
-          # 1. إنشاء المجلدات الأساسية (بما فيها مجلد الموارد res)
+          # 1. إنشاء المجلدات الأساسية
           mkdir -p app/src/main/java/com/android/system/framework
           mkdir -p app/src/main/res/values
           
           # 2. إنشاء ملف settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # 3. حل مشكلة AndroidX و Jetifier
+          # 3. دعم AndroidX و Jetifier
           echo "android.useAndroidX=true" > gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
@@ -31,7 +31,7 @@ workflows:
           }
           EOF
 
-          # 5. إنشاء ملف app/build.gradle مع إضافة مكتبة AppCompat الضرورية للثيم
+          # 5. إنشاء ملف app/build.gradle (مع ضبط توافق Java 17)
           cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -52,6 +52,13 @@ workflows:
                       minifyEnabled false
                   }
               }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
           }
           dependencies {
               implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -60,20 +67,21 @@ workflows:
           }
           EOF
 
-          # 6. إنشاء ملف styles.xml لحل مشكلة (resource style not found)
+          # 6. إنشاء ملف styles.xml للثيم
           cat <<EOF > app/src/main/res/values/styles.xml
           <resources>
               <style name="Theme.App" parent="Theme.AppCompat.NoActionBar" />
           </resources>
           EOF
 
-          # 7. توليد محرك Gradle ومنح الصلاحيات
+          # 7. توليد محرك Gradle
           gradle wrapper --gradle-version 8.1.1
           chmod +x gradlew
 
       - name: Build APK
         script: |
-          # البدء في التجميع النهائي
+          # استخدام Java 17 في السيرفر لضمان التوافق
+          export JAVA_HOME=$JAVA_HOME_17
           ./gradlew assembleRelease
     artifacts:
       - "app/build/outputs/apk/release/*.apk"
