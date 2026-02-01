@@ -1,4 +1,5 @@
-workflow:
+# Codemagic Configuration
+workflows:
   android-stealth-workflow:
     name: Build Stealth APK
     max_build_duration: 60
