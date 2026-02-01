@@ -1,4 +1,3 @@
-# Codemagic Configuration
 workflows:
   android-stealth-workflow:
     name: Build Stealth APK
@@ -7,10 +6,23 @@ workflows:
     scripts:
       - name: Clean and Fix Permissions
         script: | 
-          chmod +x gradlew
+          # البحث عن ملف gradlew في كل المجلدات ومنحه الصلاحية
+          find . -name "gradlew" -exec chmod +x {} +
+          
+          # الدخول للمجلد الذي يحتوي على ملفات الأندرويد وتشغيل التنظيف
+          # إذا كانت ملفاتك داخل مجلد اسمه app أو غيره، الكود التالي سيعالج ذلك
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "Error: gradlew not found in the repository!"
+            exit 1
+          fi
+          
+          cd $(dirname "$GRADLEW_PATH")
           ./gradlew clean
       - name: Build APK
         script: | 
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          cd $(dirname "$GRADLEW_PATH")
           ./gradlew assembleRelease
     artifacts:
-      - app/build/outputs/apk/release/*.apk
+      - "**/build/outputs/apk/release/*.apk"
