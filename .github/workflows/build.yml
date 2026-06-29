@@ -1,0 +1,65 @@
+name: Build TOTV+ TV APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # تشغيل يدوي من تبويب Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      # احفظ Manifest التلفاز قبل توليد السكافولد
+      - name: Backup TV manifest
+        run: |
+          if [ -f android/app/src/main/AndroidManifest.xml ]; then
+            cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.tv.xml
+          fi
+
+      # ولّد ملفات منصّة أندرويد المفقودة (لا يلمس lib/ ولا pubspec.yaml)
+      - name: Generate Android scaffolding
+        run: flutter create . --org com.totvplus --project-name totvplus --platforms=android
+
+      # أعد Manifest التلفاز (leanback + cleartext http)
+      - name: Restore TV manifest
+        run: |
+          if [ -f /tmp/AndroidManifest.tv.xml ]; then
+            cp /tmp/AndroidManifest.tv.xml android/app/src/main/AndroidManifest.xml
+          fi
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp build/app/outputs/flutter-apk/app-release.apk out/totvplus-tv.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: totvplus-tv-apk
+          path: out/totvplus-tv.apk
+          if-no-files-found: error
