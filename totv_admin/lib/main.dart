@@ -48,27 +48,41 @@ const _kFbAndroid = FirebaseOptions(
   projectId: 'totvq-8e439',
   storageBucket: 'totvq-8e439.firebasestorage.app',
 );
-const _kFbWeb = FirebaseOptions(
-  apiKey: 'AIzaSyCk0dSmHGQ248b-OQi44Rm2zWrfbpLBkpU',
-  appId: '1:214530463737:android:c6447caa773d03b1164f28',
-  messagingSenderId: '214530463737',
-  projectId: 'totvq-8e439',
-  storageBucket: 'totvq-8e439.firebasestorage.app',
-);
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: kBar,
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  // الخادم المحلي يبدأ فوراً (بالتوازي مع الإشعارات) لتسريع الفتح
-  unawaited(LocalSite.start());
-  unawaited(AdminPush.init());
-  runApp(const AdminApp());
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    FlutterError.onError = (d) { CrashLog.add('flutter: ${d.exceptionAsString()}'); };
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: kBar,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ));
+    // الخادم المحلي يبدأ فوراً لتسريع الفتح — الإشعارات تبدأ بعد ظهور الصفحة
+    unawaited(LocalSite.start());
+    runApp(const AdminApp());
+  }, (e, st) => CrashLog.add('$e'));
+}
+
+/// سجل أخطاء صغير يظهر في «فحص الإشعارات» (للتشخيص)
+class CrashLog {
+  static const _k = 'crash_log_v1';
+  static Future<void> add(String e) async {
+    debugPrint('[error] $e');
+    try {
+      final p = await SharedPreferences.getInstance();
+      final l = p.getStringList(_k) ?? [];
+      l.insert(0, '${DateTime.now().toIso8601String().substring(5, 19)}  ${e.length > 300 ? e.substring(0, 300) : e}');
+      await p.setStringList(_k, l.take(15).toList());
+    } catch (_) {}
+  }
+  static Future<List<String>> read() async {
+    try { return (await SharedPreferences.getInstance()).getStringList(_k) ?? []; } catch (_) { return []; }
+  }
+  static Future<void> clear() async {
+    try { await (await SharedPreferences.getInstance()).remove(_k); } catch (_) {}
+  }
 }
 
 class AdminApp extends StatelessWidget {
@@ -128,49 +142,54 @@ class AdminPush {
     sound: RawResourceAndroidNotificationSound('cash'),
   );
 
-  static Future<void> init() async {
+  static bool _started = false;
+  static bool safeMode = false;     // تهيئة FCM تسببت بتوقف سابق ⇐ معطّلة مؤقتاً
+  static const _kGuard = 'push_init_guard_v2';
+
+  static Future<void> init({bool force = false}) async {
+    if (_started) return;
+    _started = true;
+    SharedPreferences? prefs;
+    try { prefs = await SharedPreferences.getInstance(); } catch (_) {}
+
     try {
-      // 1) الإشعارات المحلية والقناة (تعمل دائماً)
+      // 1) الإشعارات المحلية والقناة (آمنة دائماً)
       await _ln.initialize(
         const InitializationSettings(android: AndroidInitializationSettings('@drawable/ic_notification')),
         onDidReceiveNotificationResponse: (_) => _open(),
       );
       final android = _ln.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await android?.createNotificationChannel(orders);
-      await android?.requestNotificationsPermission();
       final launch = await _ln.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp == true) _pendingOpen = true;
-    } catch (e) { debugPrint('[local notif] $e'); }
+    } catch (e) { CrashLog.add('local notif: $e'); }
 
-    // 2) Firebase: ملف google-services.json إن وُجد، وإلا الإعداد المدمج
+    // حارس: إن بقيت العلامة من تشغيل سابق ⇐ التطبيق توقف أثناء FCM
+    if (!force && (prefs?.getBool(_kGuard) ?? false)) {
+      safeMode = true;
+      error = 'تهيئة الإشعارات توقفت في المرة السابقة — عُطّلت مؤقتاً. اضغط «إعادة تفعيل الإشعارات».';
+      _done();
+      return;
+    }
+    await prefs?.setBool(_kGuard, true);
+
     try {
-      await Firebase.initializeApp();
-      mode = 'google-services.json';
-    } catch (_) {
+      // 2) Firebase: ملف google-services.json إن وُجد، وإلا الإعداد المدمج
       try {
+        await Firebase.initializeApp();
+        mode = 'google-services.json';
+      } catch (_) {
         await Firebase.initializeApp(options: _kFbAndroid);
         mode = 'إعداد مدمج';
-      } catch (e) { error = 'Firebase: $e'; _done(); return; }
-    }
-
-    // 3) FCM: التوكن + الاشتراك في قناة الطلبات
-    try {
+      }
+      // 3) FCM
       final m = FirebaseMessaging.instance;
       final s = await m.requestPermission(alert: true, badge: true, sound: true);
       permission = s.authorizationStatus;
       token = await _getToken();
-      if (token == null && mode == 'إعداد مدمج') {
-        // المفتاح الأول مقيّد؟ جرّب مفتاح الويب
-        try {
-          await Firebase.app().delete();
-          await Firebase.initializeApp(options: _kFbWeb);
-          mode = 'إعداد مدمج (ويب)';
-          token = await _getToken();
-        } catch (e) { error = '$e'; }
-      }
       if (token != null) {
-        await FirebaseMessaging.instance.subscribeToTopic('admin_orders');
-        await FirebaseMessaging.instance.subscribeToTopic('admins');
+        await m.subscribeToTopic('admin_orders').timeout(const Duration(seconds: 20));
+        await m.subscribeToTopic('admins').timeout(const Duration(seconds: 20));
         subscribed = true;
         enabled = true;
         error = '';
@@ -182,10 +201,22 @@ class AdminPush {
         if (msg.data['type'] == 'order') onOrder?.call(false);
       });
       FirebaseMessaging.onMessageOpenedApp.listen((msg) { if (msg.data['type'] == 'order') _open(); });
-      final first = await FirebaseMessaging.instance.getInitialMessage();
+      final first = await m.getInitialMessage();
       if (first?.data['type'] == 'order') _pendingOpen = true;
-    } catch (e) { error = 'FCM: $e'; debugPrint('[push] $e'); }
+    } catch (e) {
+      error = 'FCM: $e';
+      CrashLog.add('push: $e');
+    }
+    await prefs?.setBool(_kGuard, false);   // وصلنا هنا ⇐ لا توقف
     _done();
+  }
+
+  /// إعادة المحاولة يدوياً من صفحة الفحص
+  static Future<void> retry() async {
+    try { (await SharedPreferences.getInstance()).setBool(_kGuard, false); } catch (_) {}
+    safeMode = false;
+    _started = false;
+    await init(force: true);
   }
 
   static void _done() { if (!ready.isCompleted) ready.complete(); }
@@ -458,6 +489,8 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     AdminPush.onOrder = (opened) { if (opened) { _go('requests'); } else { _reloadOrders(); } };
     _splashGuard = Timer(const Duration(seconds: 8), () { if (mounted) setState(() => _splash = false); });
     _init();
+    // الإشعارات بعد أن تظهر الواجهة (لا تؤخّر الفتح ولا توقفه)
+    Future.delayed(const Duration(seconds: 4), () => AdminPush.init());
   }
 
   @override
@@ -527,6 +560,7 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     try {
       _base = await LocalSite.start();
     } catch (e) {
+      CrashLog.add('local site: $e');
       if (mounted) setState(() { _error = true; _splash = false; });
       return;
     }
@@ -540,10 +574,12 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
         onPageStarted: (_) { if (mounted) setState(() => _error = false); },
         onPageFinished: (_) async {
           await _js(_bridgeJs);
+          Future.delayed(const Duration(milliseconds: 1500), () { if (mounted && _splash) setState(() => _splash = false); });
           if (_search) _toggleSearch(true);
           Future.delayed(const Duration(seconds: 3), AdminPush.flushPending);
         },
         onWebResourceError: (e) {
+          if (e.isForMainFrame == true) CrashLog.add('web: ${e.errorCode} ${e.description} ${e.url ?? ''}');
           if (e.isForMainFrame == true && mounted) setState(() { _error = true; _splash = false; });
         },
         onNavigationRequest: (req) {
@@ -1227,6 +1263,7 @@ class _PushCheckPageState extends State<PushCheckPage> {
   int _code = -1;
   Map<String, dynamic>? _h;
   bool? _admin;
+  List<String> _log = [];
 
   @override
   void initState() { super.initState(); _run(); }
@@ -1237,8 +1274,9 @@ class _PushCheckPageState extends State<PushCheckPage> {
     final (c, j) = await PushApi.health();
     String? tok;
     try { tok = await widget.getToken(); } catch (_) {}
+    final log = await CrashLog.read();
     if (!mounted) return;
-    setState(() { _code = c; _h = j; _admin = tok != null; _loading = false; });
+    setState(() { _code = c; _h = j; _admin = tok != null; _log = log; _loading = false; });
   }
 
   Future<void> _test(String action) async {
@@ -1306,6 +1344,22 @@ class _PushCheckPageState extends State<PushCheckPage> {
               const Text('استقبال الإشعارات على هذا الهاتف',
                   style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
+              if (AdminPush.safeMode || !AdminPush.enabled)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: kGold, foregroundColor: Colors.black,
+                        minimumSize: const Size.fromHeight(48)),
+                    onPressed: _busy ? null : () async {
+                      setState(() => _busy = true);
+                      await AdminPush.retry();
+                      if (mounted) setState(() => _busy = false);
+                      _run();
+                    },
+                    icon: const Icon(Icons.notifications_active_rounded),
+                    label: const Text('إعادة تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ),
               _row(AdminPush.permission == null ? null
                       : AdminPush.permission == AuthorizationStatus.authorized ||
                         AdminPush.permission == AuthorizationStatus.provisional,
@@ -1350,6 +1404,23 @@ class _PushCheckPageState extends State<PushCheckPage> {
               const SizedBox(height: 14),
               const Text('ملاحظة: إشعار الطلب يُحدَّد بطلب واحد كل 45 ثانية لكل حساب.',
                   style: TextStyle(color: Colors.white38, fontSize: 12)),
+              if (_log.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Row(children: [
+                  const Expanded(child: Text('سجل الأخطاء (أرسله للدعم عند وجود مشكلة)',
+                      style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w800))),
+                  IconButton(tooltip: 'نسخ', icon: const Icon(Icons.copy_rounded, size: 20),
+                      onPressed: () => Clipboard.setData(ClipboardData(text: _log.join('\n')))),
+                  IconButton(tooltip: 'مسح', icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      onPressed: () async { await CrashLog.clear(); _run(); }),
+                ]),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(10)),
+                  child: SelectableText(_log.join('\n\n'), textDirection: TextDirection.ltr,
+                      style: const TextStyle(fontSize: 11, color: Colors.white70, fontFamily: 'monospace')),
+                ),
+              ],
             ]),
     );
   }
