@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "214530463737",
+    "project_id": "totvq-8e439",
+    "storage_bucket": "totvq-8e439.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214530463737:android:c6447caa773d03b1164f28",
+        "android_client_info": {
+          "package_name": "com.totv.plus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "214530463737-t9303dfnvnfmgbjsggbuenqgh93rt68f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.totv.plus",
+            "certificate_hash": "7dc7f8343df0ee9c4cf1192887a9dea42f8d77f4"
+          }
+        },
+        {
+          "client_id": "214530463737-bbqctoe8ftblj1gtfgdgcvrincrncv3q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBR9NjEZHm9RhngSfYNMmphaH_gDLTApTY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "214530463737-bbqctoe8ftblj1gtfgdgcvrincrncv3q.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
