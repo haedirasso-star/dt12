@@ -21,7 +21,9 @@
 // ════════════════════════════════════════════════════════════════════
 
 const SA = (() => { try { return JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT") ?? "{}"); } catch { return {}; } })();
-const WEB_KEY = Deno.env.get("FIREBASE_WEB_API_KEY") || "AIzaSyBR9NjEZHm9RhngSfYNMmphaH_gDLTApTY";
+// مفاتيح Firebase العامة لنفس المشروع (الويب ثم أندرويد) — تُجرَّب بالترتيب إن كان أحدها مقيّداً
+const WEB_KEYS = [Deno.env.get("FIREBASE_WEB_API_KEY"), "AIzaSyCk0dSmHGQ248b-OQi44Rm2zWrfbpLBkpU", "AIzaSyBR9NjEZHm9RhngSfYNMmphaH_gDLTApTY"]
+  .filter((k): k is string => !!k);
 const ADMINS = (Deno.env.get("ADMIN_EMAILS") ?? "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
 const BASE = Deno.env.get("SUPABASE_URL") ?? "";
 const ICON = Deno.env.get("ICON_URL") || `${BASE}/functions/v1/push/icon.png`;
@@ -84,12 +86,21 @@ async function send(topic: string, title: string, body: string, opts: {
 // ── التحقق من مستخدم Firebase ───────────────────────────────────────
 async function verify(idToken: string): Promise<{ uid: string; email: string } | null> {
   if (!idToken || idToken.length < 100) return null;
-  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${WEB_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }),
-  });
-  if (!r.ok) return null;
-  const u = (await r.json())?.users?.[0];
-  return u ? { uid: u.localId, email: String(u.email ?? "").toLowerCase() } : null;
+  for (const key of WEB_KEYS) {
+    try {
+      const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${key}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }),
+      });
+      if (r.ok) {
+        const u = (await r.json())?.users?.[0];
+        return u ? { uid: u.localId, email: String(u.email ?? "").toLowerCase() } : null;
+      }
+      const err = await r.text();
+      if (err.includes("INVALID_ID_TOKEN") || err.includes("USER_NOT_FOUND")) return null;  // التوكن نفسه غير صالح
+      console.warn("[verify] key rejected, trying next:", err.slice(0, 120));
+    } catch (e) { console.warn("[verify]", e); }
+  }
+  return null;
 }
 
 const lastOrder = new Map<string, number>();   // حد: طلب واحد كل 45 ثانية لكل مستخدم
