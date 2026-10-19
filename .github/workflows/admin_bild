@@ -1,65 +1,80 @@
-name: Build TOTV+ TV APK
+name: TOTV+ Admin — Build APK
 
+# يبني تطبيق الإدارة فقط عند تغيير مجلد totv_admin (أو يدوياً)
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:   # تشغيل يدوي من تبويب Actions
+    paths: [ 'totv_admin/**', '.github/workflows/admin_build.yml' ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: totv_admin
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
+          distribution: 'temurin'
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.29.3'
           channel: 'stable'
           cache: true
 
-      - name: Flutter version
-        run: flutter --version
-
-      # احفظ Manifest التلفاز قبل توليد السكافولد
-      - name: Backup TV manifest
+      # نفس مفتاح التوقيع الخاص بـ TOTV+ (موجود في المستودع الخاص)
+      - name: Copy signing key
         run: |
-          if [ -f android/app/src/main/AndroidManifest.xml ]; then
-            cp android/app/src/main/AndroidManifest.xml /tmp/AndroidManifest.tv.xml
+          if [ -f ../android/key.properties ] && [ -f ../android/app/totv_keystore.jks ]; then
+            cp ../android/key.properties android/key.properties
+            cp ../android/app/totv_keystore.jks android/app/totv_keystore.jks
+            echo "signing: release key"
+          else
+            echo "signing: debug (no key found)"
           fi
 
-      # ولّد ملفات منصّة أندرويد المفقودة (لا يلمس lib/ ولا pubspec.yaml)
-      - name: Generate Android scaffolding
-        run: flutter create . --org com.totvplus --project-name totvplus --platforms=android
-
-      # أعد Manifest التلفاز (leanback + cleartext http)
-      - name: Restore TV manifest
+      # إشعارات الطلبات: google-services.json الخاص بـ com.totv.admin
+      # (1) موجود في totv_admin/android/app  أو  (2) Secret باسم ADMIN_GOOGLE_SERVICES_JSON
+      # أو (3) ملف التطبيق الأساسي بعد إضافة com.totv.admin لنفس مشروع Firebase (يحوي التطبيقين)
+      - name: Firebase config for admin app
+        env:
+          GS_JSON: ${{ secrets.ADMIN_GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -f /tmp/AndroidManifest.tv.xml ]; then
-            cp /tmp/AndroidManifest.tv.xml android/app/src/main/AndroidManifest.xml
+          if [ -f android/app/google-services.json ] && grep -q '"com.totv.admin"' android/app/google-services.json; then
+            echo "firebase: totv_admin/android/app/google-services.json"
+          elif [ -n "$GS_JSON" ]; then
+            printf '%s' "$GS_JSON" > android/app/google-services.json; echo "firebase: from secret"
+          elif [ -f ../android/app/google-services.json ] && grep -q '"com.totv.admin"' ../android/app/google-services.json; then
+            cp ../android/app/google-services.json android/app/google-services.json; echo "firebase: from main app file"
+          else
+            rm -f android/app/google-services.json
+            echo "::warning::لا يوجد google-services.json لـ com.totv.admin — سيُبنى التطبيق بدون إشعارات الطلبات"
           fi
 
-      - name: Get packages
-        run: flutter pub get
+      - run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Accept Android licenses
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Rename APK
+      - name: Build APK
+        run: flutter build apk --release --no-shrink
+        env:
+          JAVA_OPTS: "-Xmx4096m"
+
+      - name: Collect
         run: |
           mkdir -p out
-          cp build/app/outputs/flutter-apk/app-release.apk out/totvplus-tv.apk
+          cp build/app/outputs/flutter-apk/app-release.apk out/TOTV-Admin.apk
+          ls -lh out
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: totvplus-tv-apk
-          path: out/totvplus-tv.apk
-          if-no-files-found: error
+          name: TOTV-Admin-APK
+          path: totv_admin/out/TOTV-Admin.apk
+          retention-days: 30
