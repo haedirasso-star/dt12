@@ -258,7 +258,7 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
     if (mounted) setState(() => _sending = false);
   }
 
-  List<String> get _templates => [...(Prefs.p.getStringList('chat_templates') ?? []), ..._defaults];
+  List<String> get _templates => [...(Prefs.p.getStringList('chat_templates') ?? <String>[]), ..._defaults];
 
   Future<void> _pickTemplate() async {
     final name = _name.isEmpty ? '' : _name.split(' ').first;
@@ -270,7 +270,7 @@ class _ChatRoomPageState extends State<ChatRoomPage> {
     if (v == '__add') {
       final n = await UI.input('قالب جديد', multiline: true, hint: 'نص الرد الجاهز', ok: 'حفظ');
       if (n == null || n.trim().isEmpty) return;
-      await Prefs.p.setStringList('chat_templates', [n.trim(), ...(Prefs.p.getStringList('chat_templates') ?? [])].take(20).toList());
+      await Prefs.p.setStringList('chat_templates', [n.trim(), ...(Prefs.p.getStringList('chat_templates') ?? <String>[])].take(20).toList());
       UI.toast('حُفظ القالب');
       return;
     }
