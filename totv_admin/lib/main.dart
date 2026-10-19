@@ -457,11 +457,12 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     if (a && grab(a)) e.preventDefault();
   }, true);
   // حالة الصفحة ⇐ الواجهة الأصلية (العنوان، القسم، الدخول، عدد الطلبات)
-  var last = '';
+  var last = '', t0 = Date.now();
   function st(){
     var A = document.getElementById('APP'), L = document.getElementById('LS');
     var app = !!A && A.style.display === 'block';
-    var login = !app && !!L && L.style.display === 'flex';
+    // مهلة قصيرة حتى يتحقق Firebase من الجلسة المحفوظة (لا تظهر شاشة الدخول لحظياً)
+    var login = !app && !!L && getComputedStyle(L).display !== 'none' && Date.now() - t0 > 1800;
     var role = '', cur = '';
     try { role = USER_ROLE || ''; } catch(e){}
     try { cur = CUR || ''; } catch(e){}
@@ -866,21 +867,28 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
       child: Scaffold(
         backgroundColor: kBg,
         appBar: showBars ? _appBar() : null,
-        body: Stack(children: [
+        // ★ StackFit.expand: الصفحة تملأ الشاشة دائماً (بدونه تنكمش إلى صفر بعد اختفاء شاشة البدء)
+        body: Stack(fit: StackFit.expand, children: [
           // قبل الدخول: الصفحة تحت شريط الحالة مباشرة
           Positioned.fill(
             child: Padding(
               padding: EdgeInsets.only(top: showBars ? 0 : MediaQuery.of(context).padding.top),
-              child: _c == null ? const SizedBox() : WebViewWidget(controller: _c!),
+              child: _c == null ? const ColoredBox(color: kBg) : WebViewWidget(controller: _c!),
             ),
           ),
           if (showBars && _progress < 100)
             Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator(
                 value: _progress / 100, minHeight: 2, color: kGold, backgroundColor: Colors.transparent)),
-          if (_error) _errorView(),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            child: _splash ? const _Splash() : const SizedBox.shrink(),
+          if (_error) Positioned.fill(child: _errorView()),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !_splash,
+              child: AnimatedOpacity(
+                opacity: _splash ? 1 : 0,
+                duration: const Duration(milliseconds: 350),
+                child: const _Splash(),
+              ),
+            ),
           ),
         ]),
         bottomNavigationBar: showBars && !_agent
