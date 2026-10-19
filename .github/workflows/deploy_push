@@ -1,0 +1,61 @@
+name: Supabase — Deploy push function
+
+# ينشر دالة الإشعارات push إلى Supabase ويضبط أسرارها — بلا لوحة تحكم.
+# المطلوب مرة واحدة في GitHub ← Settings ← Secrets and variables ← Actions:
+#   SUPABASE_ACCESS_TOKEN   من supabase.com/dashboard/account/tokens
+#   FCM_SERVICE_ACCOUNT     محتوى ملف JSON (Firebase ← Service accounts ← Generate new private key)
+#   ADMIN_EMAILS            بريدك، مثل haedirasso@gmail.com
+on:
+  push:
+    branches: [ main, master ]
+    paths: [ 'supabase/**', '.github/workflows/deploy_push.yml' ]
+  workflow_dispatch:
+
+env:
+  PROJECT_REF: hlmaksidfqdarwunedqj
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check secrets
+        env:
+          T: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          F: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          A: ${{ secrets.ADMIN_EMAILS }}
+        run: |
+          ok=1
+          [ -n "$T" ] || { echo "::error::أضف Secret باسم SUPABASE_ACCESS_TOKEN"; ok=0; }
+          [ -n "$F" ] || { echo "::error::أضف Secret باسم FCM_SERVICE_ACCOUNT (محتوى ملف JSON)"; ok=0; }
+          [ -n "$A" ] || { echo "::error::أضف Secret باسم ADMIN_EMAILS"; ok=0; }
+          [ "$ok" = 1 ] || exit 1
+          echo "$F" | jq -e '.client_email and .private_key and .project_id' >/dev/null \
+            || { echo "::error::FCM_SERVICE_ACCOUNT ليس ملف حساب خدمة صحيحاً"; exit 1; }
+
+      - name: Set function secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          F: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          A: ${{ secrets.ADMIN_EMAILS }}
+        run: |
+          FCM_ONE_LINE=$(echo "$F" | jq -c .)
+          supabase secrets set --project-ref "$PROJECT_REF" \
+            "FCM_SERVICE_ACCOUNT=$FCM_ONE_LINE" "ADMIN_EMAILS=$A"
+
+      - name: Deploy push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy push --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+
+      - name: Health check
+        run: |
+          sleep 5
+          echo "— فحص الدالة —"
+          curl -s "https://$PROJECT_REF.supabase.co/functions/v1/push/health"; echo
