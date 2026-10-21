@@ -1,0 +1,6 @@
+# إعداد Supabase CLI — يُستخدم في GitHub Actions لنشر دالة push تلقائياً
+project_id = "hlmaksidfqdarwunedqj"
+
+[functions.push]
+# الدالة تتحقق بنفسها من توكن Firebase — لذلك نطفئ تحقق JWT الخاص بـ Supabase
+verify_jwt = false

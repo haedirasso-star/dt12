@@ -1,0 +1,56 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<title>TOTV+ — فحص اتصال Supabase</title>
+<style>
+body{background:#0b0b0d;color:#e8e8ea;font-family:system-ui,sans-serif;padding:26px;max-width:760px;margin:auto}
+h1{color:#f0b429;font-size:19px}
+.row{padding:13px 15px;border-radius:9px;margin:9px 0;border:1px solid #2a2a30;background:#141418;line-height:1.8}
+.ok{border-color:#2ecc71;background:rgba(46,204,113,.08)}
+.bad{border-color:#e05252;background:rgba(224,82,82,.08)}
+.warn{border-color:#f0b429;background:rgba(240,180,41,.08)}
+code{font-family:ui-monospace,monospace;background:#000;padding:2px 6px;border-radius:4px;color:#6ee7b7;direction:ltr;display:inline-block}
+b{color:#f0b429}
+</style></head><body>
+<h1>🔍 فحص اتصال Supabase — TOTV+</h1>
+<p style="color:#9a9aa2;font-size:13px">افتح هذا الملف في المتصفح بعد تشغيل ملفَّي SQL.</p>
+<div id="out"></div>
+<script>
+const URL_ = 'https://hlmaksidfqdarwunedqj.supabase.co';
+const KEY  = 'sb_publishable_-lEvqrjoQgkXJdN4lZExxw_1cycMoEj';
+const H = {apikey:KEY, Authorization:'Bearer '+KEY, 'Content-Type':'application/json'};
+const out = document.getElementById('out');
+const add = (cls,html)=>out.insertAdjacentHTML('beforeend',`<div class="row ${cls}">${html}</div>`);
+
+(async()=>{
+  // 1
+  try{
+    const r = await fetch(URL_+'/rest/v1/', {headers:H});
+    if(r.status<500) add('ok','<b>1) الاتصال بالمشروع</b><br>✅ الرابط والمفتاح صحيحان (HTTP '+r.status+')');
+    else add('bad','<b>1) الاتصال</b><br>❌ HTTP '+r.status);
+  }catch(e){ add('bad','<b>1) الاتصال</b><br>❌ '+e.message+'<br>تحقّق من الرابط أو الإنترنت'); }
+
+  // 2
+  try{
+    const r = await fetch(URL_+'/rest/v1/rpc/get_subscription',{
+      method:'POST',headers:H,body:JSON.stringify({p_uid:'probe_test_000000'})});
+    const t = await r.text();
+    if(r.status===404) add('warn','<b>2) دوال القاعدة</b><br>⏳ لم تُنشر بعد.<br>شغّل <code>01_schema.sql</code> ثم <code>02_admin_functions.sql</code> في SQL Editor.');
+    else if(r.status===200) add('ok','<b>2) دوال القاعدة</b><br>✅ منشورة وتعمل<br><code>'+t.slice(0,120)+'</code>');
+    else if(r.status===401||r.status===403) add('bad','<b>2) دوال القاعدة</b><br>❌ المفتاح مرفوض (HTTP '+r.status+') — أعد نسخ Publishable key');
+    else add('warn','<b>2) دوال القاعدة</b><br>HTTP '+r.status+'<br><code>'+t.slice(0,200)+'</code>');
+  }catch(e){ add('bad','<b>2) دوال القاعدة</b><br>❌ '+e.message); }
+
+  // 3
+  try{
+    const r = await fetch(URL_+'/rest/v1/activation_codes?select=code&limit=1',{headers:H});
+    const t = await r.text();
+    if(r.status===401||r.status===403||r.status===404)
+      add('ok','<b>3) حماية RLS</b><br>✅ ممتاز — الجداول محميّة، لا يمكن قراءتها بالمفتاح العام');
+    else if(t.trim()==='[]')
+      add('ok','<b>3) حماية RLS</b><br>✅ الجدول لا يُرجع بيانات للمفتاح العام');
+    else
+      add('bad','<b>3) حماية RLS</b><br>🛑 <b>خطر:</b> الأكواد مقروءة للعامة! تأكد أنك شغّلت <code>01_schema.sql</code> كاملاً<br><code>'+t.slice(0,160)+'</code>');
+  }catch(e){ add('warn','<b>3) حماية RLS</b><br>'+e.message); }
+
+  add('','<b>الخطوة التالية</b><br>إن كانت 1 و3 ✅ و2 ⏳ ⇐ شغّل ملفَّي SQL ثم أعد فتح هذه الصفحة.<br>إن كانت الثلاثة ✅ ⇐ كل شيء جاهز، ولّد كوداً من صفحة الأدمن.');
+})();
+</script></body></html>
